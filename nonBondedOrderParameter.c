@@ -108,7 +108,7 @@ SIMULATION_BOUNDARY readDumpBoundary (FILE *file_dump, SIMULATION_BOUNDARY bound
 	boundary.yLength = boundary.yhi - boundary.ylo;
 	boundary.zLength = boundary.zhi - boundary.zlo;
 
-	printf("xlo xhi %f %f\nylo yhi %f %f\nzlo zhi %f %f\n\n", boundary.xlo, boundary.xhi, boundary.ylo, boundary.yhi, boundary.zlo, boundary.zhi);
+	printf("\nxlo xhi %f %f [%f]\nylo yhi %f %f [%f]\nzlo zhi %f %f [%f]\n\n", boundary.xlo, boundary.xhi, boundary.xLength, boundary.ylo, boundary.yhi, boundary.yLength, boundary.zlo, boundary.zhi, boundary.zLength);
 
 	return boundary;
 }
@@ -130,8 +130,12 @@ TRAJECTORY *readTimestep (FILE *file_dump, TRAJECTORY *atoms, int nAtomEntries, 
 	{
 		fgets (lineString, 2000, file_dump);
 		sscanf (lineString, "%d\n", &currentAtomID);
-		sscanf (lineString, "%d %d %f %f %f %d %d %d\n", &atoms[currentAtomID - 1].atomID, &atoms[currentAtomID - 1].atomType, &atoms[currentAtomID - 1].x, &atoms[currentAtomID - 1].y, &atoms[currentAtomID - 1].z, &atoms[currentAtomID - 1].ix, &atoms[currentAtomID - 1].iy, &atoms[currentAtomID - 1].iz);
-		atoms[currentAtomID - 1].isEndGroup = 0;
+
+		if (currentAtomID > 0)
+		{
+			sscanf (lineString, "%d %d %f %f %f %d %d %d\n", &atoms[currentAtomID - 1].atomID, &atoms[currentAtomID - 1].atomType, &atoms[currentAtomID - 1].x, &atoms[currentAtomID - 1].y, &atoms[currentAtomID - 1].z, &atoms[currentAtomID - 1].ix, &atoms[currentAtomID - 1].iy, &atoms[currentAtomID - 1].iz);
+			atoms[currentAtomID - 1].isEndGroup = 0;
+		}
 	}
 
 	return atoms;
@@ -259,6 +263,9 @@ int **findNeighbors2 (int **neighborIDs, PAIR_PAIR_DISTANCE *pairInfo, int i, in
 	{
 		if ((atoms[l].atomType == atomType1) || (atomType1 == -1))
 		{
+				// we need to find the distances for the nearest 'N' atoms
+				// this 'for' loop calculates the maximum distance among the array items
+				// only the max entity is replaced from the array
 				for (int j = 0; j < coordinationNumber; ++j)
 				{
 					if (j == 0) {
@@ -276,19 +283,19 @@ int **findNeighbors2 (int **neighborIDs, PAIR_PAIR_DISTANCE *pairInfo, int i, in
 					}
 				}
 
-				if (pairInfo[l].distance < max.distance) {
+				// 'max.distance', 'max.atom1', and 'max.atom2' are from the previous 'for' loop
+				if ((pairInfo[l].distance < max.distance) && (l >= coordinationNumber)) {
 					nearestAtomDistances[max.index].distance = pairInfo[l].distance;
 					nearestAtomDistances[max.index].atom1 = pairInfo[l].atom1;
 					nearestAtomDistances[max.index].atom2 = pairInfo[l].atom2; }
 		}
 	}
 
-/*	printf("\n");
-*/	for (int m = 0; m < coordinationNumber; ++m) {
+	for (int m = 0; m < coordinationNumber; ++m) {
 		neighborIDs[i][m] = (int)nearestAtomDistances[m].atom2;
-/*		printf("%d %d\n", i + 1, nearestAtomDistances[m].atom2);
-		usleep (100000); 
-*/	}
+		// printf("%d %d\n", i + 1, nearestAtomDistances[m].atom2);
+		// usleep (100000); 
+	}
 
 	return neighborIDs;
 }
@@ -317,14 +324,19 @@ int **findNeighbors (TRAJECTORY *atoms, int **neighborIDs, int nAtoms, SIMULATIO
 	PAIR_PAIR_DISTANCE *pairInfo;
 	pairInfo = (PAIR_PAIR_DISTANCE *) malloc (nAtoms * sizeof (PAIR_PAIR_DISTANCE));
 
+	// scrolling through the atoms
 	for (int i = 0; i < nAtoms; ++i)
 	{
+		// check if the atoms belong to the target type
 		if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
 		{
+			// check the distance with all other atoms
 			for (int j = 0; j < nAtoms; ++j)
 			{
+				// make sure we don't check the distance between the same atom
 				if (i != j)
 				{
+					// we check the distance only if the atomType2 belongs to the target type
 					if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 					{
 						pairInfo[j].distance = computeDistance (atoms, i, j, boundary);
@@ -375,17 +387,17 @@ float *computeNonBondedOrderParameter (float *nonBondedAngle, TRAJECTORY *atoms,
 					y1 = atoms[i].y;
 					z1 = atoms[i].z;
 
-					x2 = atoms[neighborIDs[i][j]].x;
-					y2 = atoms[neighborIDs[i][j]].y;
-					z2 = atoms[neighborIDs[i][j]].z;
+					x2 = atoms[neighborIDs[i][j] - 1].x;
+					y2 = atoms[neighborIDs[i][j] - 1].y;
+					z2 = atoms[neighborIDs[i][j] - 1].z;
 
 					x3 = atoms[i].x;
 					y3 = atoms[i].y;
 					z3 = atoms[i].z;
 
-					x4 = atoms[neighborIDs[i][k]].x;
-					y4 = atoms[neighborIDs[i][k]].y;
-					z4 = atoms[neighborIDs[i][k]].z;
+					x4 = atoms[neighborIDs[i][k] - 1].x;
+					y4 = atoms[neighborIDs[i][k] - 1].y;
+					z4 = atoms[neighborIDs[i][k] - 1].z;
 
 					dotProduct = ((x2 - x1) * (x4 - x3)) + ((y2 - y1) * (y4 - y3)) + ((z2 - z1) * (z4 - z3)); 
 					magnitude1 = ((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)) + ((z2 - z1) * (z2 - z1)); 
@@ -425,7 +437,10 @@ float *sumNonBondedAngles (float *nonBondedAngleAverage, float *nonBondedAngle, 
 	{
 		if (atoms[i].atomType == atomType1)
 		{
-			nonBondedAngleAverage[i] += nonBondedAngle[i];
+			if (nonBondedAngle[i] > 0)
+			{
+				nonBondedAngleAverage[i] += nonBondedAngle[i];
+			}
 		}
 	}
 
@@ -453,7 +468,7 @@ void printFinalAverage (float *nonBondedAngleAverage, int nAtoms, TRAJECTORY *at
 	{
 		if (atoms[i].atomType == atomType1)
 		{
-			fprintf(file_nonbonded_final, "%d %f\n", (i + 1), (nonBondedAngleAverage[i] * 57.29578));
+			fprintf(file_nonbonded_final, "%d %f\n", (i + 1), (nonBondedAngleAverage[i] * 57.29578) / (float)currentTimestep);
 		}
 	}
 }
@@ -485,12 +500,12 @@ ANGLE_DISTRIBUTION *computeNonBondedAngleDistribution (ANGLE_DISTRIBUTION *nonBo
 
 	for (int i = 0; i < nAtoms; ++i)
 	{
-		if (nonBondedAngle[i] > -9000)
+		if (nonBondedAngle[i] > 0)
 		{
+			thetaDegrees = nonBondedAngle[i] * 57.29578;
+
 			for (int j = 0; j < angle_nBins; ++j)
 			{
-				thetaDegrees = nonBondedAngle[i] * 57.29578;
-
 				if ((thetaDegrees <= nonBondedAngleDistribution[j].thetaHi) && (thetaDegrees > nonBondedAngleDistribution[j].thetaLo))
 				{
 					nonBondedAngleDistribution[j].count += 1;
@@ -529,6 +544,39 @@ void printAngleDistributionAverage (ANGLE_DISTRIBUTION *nonBondedAngleDistributi
 	}
 }
 
+ANGLE_DISTRIBUTION *computeNonBondedAngleAverageDistribution (float *nonBondedAngleAverage, int nAtoms, ANGLE_DISTRIBUTION *nonBondedAngleAverageDistribution, int angle_nBins, int currentTimestep)
+{
+	float angle;
+
+	for (int i = 0; i < nAtoms; ++i)
+	{
+		if (nonBondedAngleAverage[i] > 0)
+		{
+			for (int j = 0; j < angle_nBins; ++j)
+			{
+				angle = nonBondedAngleAverage[i] * 57.29578 / (float)currentTimestep;
+
+				if ((angle <= nonBondedAngleAverageDistribution[j].thetaHi) && (angle > nonBondedAngleAverageDistribution[j].thetaLo))
+				{
+					nonBondedAngleAverageDistribution[j].count += 1;
+				}
+			}
+		}
+	}
+
+	return nonBondedAngleAverageDistribution;
+}
+
+void printAngleAverageDistribution (ANGLE_DISTRIBUTION *nonBondedAngleAverageDistribution, int angle_nBins, FILE *file_nonbonded_final2, int currentTimestep)
+{
+	fprintf(file_nonbonded_final2, "# Timestep: %d\nEntries: thetaLo thetaHi count\n", currentTimestep);
+
+	for (int i = 0; i < angle_nBins; ++i)
+	{
+		fprintf(file_nonbonded_final2, "%f %f %.0f\n", nonBondedAngleAverageDistribution[i].thetaLo, nonBondedAngleAverageDistribution[i].thetaHi, nonBondedAngleAverageDistribution[i].count);
+	}
+}
+
 int main(int argc, char const *argv[])
 {
 	if (argc != 7)
@@ -538,20 +586,39 @@ int main(int argc, char const *argv[])
 		exit (1);
 	}
 
-	FILE *file_dump, *file_dist, *file_dist_rt, *file_nonbonded_dump, *file_nonbonded_final;
+	FILE *file_dump, *file_dist, *file_dist_rt, *file_nonbonded_dump, *file_nonbonded_final, *file_nonbonded_final2;
 	char *pipeString;
-	pipeString = (char *) malloc (500 * sizeof (char));
+	pipeString = (char *) malloc (1000 * sizeof (char));
 
 	if (strstr (argv[1], ".xz")) {
-		snprintf (pipeString, 500, "xzcat %s", argv[1]);
+		printf("opening pipe for reading the input dump file...\n");
+		snprintf (pipeString, 1000, "xzcat %s", argv[1]);
 		file_dump = popen (pipeString, "r"); }
 	else {
+		printf("opening the input dump file directly...\n");
 		file_dump = fopen (argv[1], "r"); }
 
-	file_dist = fopen ("orderParameter.nonBonded.distribution", "w");
-	file_nonbonded_dump = fopen ("orderParameter.nonBonded.dump", "w");
-	file_nonbonded_final = fopen ("orderParameter.nonBonded.final", "w");
-	file_dist_rt = fopen ("orderParameter.nonBonded.distribution.rt", "w");
+	char *char_file_dist, *char_file_nonbonded_dump, *char_file_nonbonded_final, *char_file_nonbonded_final2, *char_file_dist_rt;
+	char_file_dist = (char *) malloc (1000 * sizeof (char));
+	char_file_nonbonded_dump = (char *) malloc (1000 * sizeof (char));
+	char_file_nonbonded_final = (char *) malloc (1000 * sizeof (char));
+	char_file_nonbonded_final2 = (char *) malloc (1000 * sizeof (char));
+	char_file_dist_rt = (char *) malloc (1000 * sizeof (char));
+
+	snprintf (char_file_dist, 1000, "%s_orderParameter_%d_%d.nonBonded.distribution", argv[1], atoi (argv[2]), atoi (argv[3]));
+	snprintf (char_file_nonbonded_dump, 1000, "%s_orderParameter_%d_%d.nonBonded.dump", argv[1], atoi (argv[2]), atoi (argv[3]));
+	snprintf (char_file_nonbonded_final, 1000, "%s_orderParameter_%d_%d.nonBonded.final", argv[1], atoi (argv[2]), atoi (argv[3]));
+	snprintf (char_file_nonbonded_final2, 1000, "%s_orderParameter_%d_%d.nonBonded.final2", argv[1], atoi (argv[2]), atoi (argv[3]));
+	snprintf (char_file_dist_rt, 1000, "%s_orderParameter_%d_%d.nonBonded.distribution.rt", argv[1], atoi (argv[2]), atoi (argv[3]));
+
+	file_dist = fopen (char_file_dist, "w");
+	file_nonbonded_dump = fopen (char_file_nonbonded_dump, "w");
+	file_nonbonded_final = fopen (char_file_nonbonded_final, "w");
+	file_nonbonded_final2 = fopen (char_file_nonbonded_final2, "w");
+	file_dist_rt = fopen (char_file_dist_rt, "w");
+
+	printf("Created file pointers...\n");
+	fflush (stdout);
 
 	SIMULATION_BOUNDARY boundary;
 	boundary = readDumpBoundary (file_dump, boundary);
@@ -570,8 +637,8 @@ int main(int argc, char const *argv[])
 
 	TRAJECTORY *atoms;
 	atoms = (TRAJECTORY *) malloc (nAtoms * sizeof (TRAJECTORY));
-	printf("Number of atoms in the trajectory file: %d\n", nAtoms);
 
+	printf("initializing the first dim of neighborIDs...\n");
 	int **neighborIDs;
 	neighborIDs = (int **) malloc (nAtoms * sizeof (int *));
 
@@ -580,15 +647,19 @@ int main(int argc, char const *argv[])
 	nonBondedAngleAverage = (float *) malloc (nAtoms * sizeof (float));
 	nonBondedAngleAverage = initNonBondedAngleAverage (nonBondedAngleAverage, nAtoms, atomType1, atoms);
 
-	ANGLE_DISTRIBUTION *nonBondedAngleDistribution, *nonBondedAngleDistributionAverage;
+	ANGLE_DISTRIBUTION *nonBondedAngleDistribution, *nonBondedAngleDistributionAverage, *nonBondedAngleAverageDistribution;
 	nonBondedAngleDistribution = (ANGLE_DISTRIBUTION *) malloc (angle_nBins * sizeof (ANGLE_DISTRIBUTION));
 	nonBondedAngleDistributionAverage = (ANGLE_DISTRIBUTION *) malloc (angle_nBins * sizeof (ANGLE_DISTRIBUTION));
+	nonBondedAngleAverageDistribution = (ANGLE_DISTRIBUTION *) malloc (angle_nBins * sizeof (ANGLE_DISTRIBUTION));
 	nonBondedAngleDistribution = initAngleDistribution (nonBondedAngleDistribution, angle_nBins, angle_binWidth);
 	nonBondedAngleDistributionAverage = initAngleDistribution (nonBondedAngleDistributionAverage, angle_nBins, angle_binWidth);
+	nonBondedAngleAverageDistribution = initAngleDistribution (nonBondedAngleAverageDistribution, angle_nBins, angle_binWidth);
 
+	printf("initializing the second dim of neighborIDs...\n");
 	for (int i = 0; i < nAtoms; ++i) {
 		neighborIDs[i] = (int *) malloc (coordinationNumber * sizeof (int)); }
 
+	printf("initializing atoms...\n");
 	atoms = initializeAtoms (atoms, nAtoms);
 
 	if (strstr (argv[1], ".xz")) {
@@ -597,6 +668,7 @@ int main(int argc, char const *argv[])
 	else {
 		rewind (file_dump); }
 
+	printf("checking the input dump file...\n");
 	file_status = fgetc (file_dump);
 
 	int currentTimestep = 0;
@@ -612,6 +684,7 @@ int main(int argc, char const *argv[])
 		atoms = readTimestep (file_dump, atoms, nAtomEntries, &boundary);
 		neighborIDs = findNeighbors (atoms, neighborIDs, nAtoms, boundary, coordinationNumber, atomType1, atomType2);
 		nonBondedAngle = computeNonBondedOrderParameter (nonBondedAngle, atoms, nAtoms, neighborIDs, atomType1, atomType2, coordinationNumber);
+
 		nonBondedAngleDistribution = computeNonBondedAngleDistribution (nonBondedAngleDistribution, nonBondedAngle, nAtoms, angle_binWidth, angle_nBins);
 		nonBondedAngleDistributionAverage = computeNonBondedAngleDistributionAverage (nonBondedAngleDistributionAverage, nonBondedAngleDistribution, angle_binWidth, angle_nBins);
 
@@ -624,8 +697,10 @@ int main(int argc, char const *argv[])
 		file_status = fgetc (file_dump);
 	}
 
+	nonBondedAngleAverageDistribution = computeNonBondedAngleAverageDistribution (nonBondedAngleAverage, nAtoms, nonBondedAngleAverageDistribution, angle_nBins, currentTimestep);
 	printFinalAverage (nonBondedAngleAverage, nAtoms, atoms, atomType1, atomType2, file_nonbonded_final, currentTimestep);
 	printAngleDistributionAverage (nonBondedAngleDistributionAverage, angle_nBins, file_dist, currentTimestep);
+	printAngleAverageDistribution (nonBondedAngleAverageDistribution, angle_nBins, file_nonbonded_final2, currentTimestep);
 
 	fclose (file_dump);
 	fclose (file_dist);
